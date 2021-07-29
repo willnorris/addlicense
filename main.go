@@ -205,9 +205,10 @@ func main() {
 		}
 		includePatterns = append(includePatterns, d)
 	}
+	fsys := os.DirFS(".")
 	for _, p := range includePatterns {
 		log.Printf("include pattern: %q", p)
-		if err := walk(ch, p); err != nil {
+		if err := walk(ch, fsys, p, ignorePatterns); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -217,16 +218,18 @@ func main() {
 
 type file struct {
 	path string
-	mode os.FileMode
+	mode fs.FileMode
 }
 
-func walk(ch chan<- *file, pattern string) error {
-	return doublestar.GlobWalk(os.DirFS("."), pattern, func(path string, d fs.DirEntry) error {
+// walk the fsys filesystem, looking for files that match pattern but do not
+// match any of ignorePatterns. Matching files are written to the channel ch.
+func walk(ch chan<- *file, fsys fs.FS, pattern string, ignorePatterns []string) error {
+	return doublestar.GlobWalk(fsys, pattern, func(path string, d fs.DirEntry) error {
 		if fileMatches(path, ignorePatterns) {
 			log.Printf("skipping: %s", path)
 			return nil
 		}
-		fi, err := os.Stat(path)
+		fi, err := d.Info()
 		if err != nil {
 			log.Printf("%s error: %v", path, err)
 			return nil
