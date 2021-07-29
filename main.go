@@ -22,9 +22,11 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -192,8 +194,20 @@ func main() {
 		}
 	}()
 
+	var includePatterns []string
 	for _, d := range flag.Args() {
-		if err := walk(ch, d); err != nil {
+		log.Printf("command line argument: %q", d)
+		if fi, _ := os.Stat(d); err != nil {
+			// ignore error, since we'll assume that it's a pattern
+		} else if fi != nil && fi.IsDir() {
+			// convert directories to sub-directory patterns
+			d = path.Join(d, "**")
+		}
+		includePatterns = append(includePatterns, d)
+	}
+	for _, p := range includePatterns {
+		log.Printf("include pattern: %q", p)
+		if err := walk(ch, p); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -206,17 +220,15 @@ type file struct {
 	mode os.FileMode
 }
 
-func walk(ch chan<- *file, start string) error {
-	return filepath.Walk(start, func(path string, fi os.FileInfo, err error) error {
-		if err != nil {
-			log.Printf("%s error: %v", path, err)
-			return nil
-		}
-		if fi.IsDir() {
-			return nil
-		}
+func walk(ch chan<- *file, pattern string) error {
+	return doublestar.GlobWalk(os.DirFS("."), pattern, func(path string, d fs.DirEntry) error {
 		if fileMatches(path, ignorePatterns) {
 			log.Printf("skipping: %s", path)
+			return nil
+		}
+		fi, err := os.Stat(path)
+		if err != nil {
+			log.Printf("%s error: %v", path, err)
 			return nil
 		}
 		ch <- &file{path, fi.Mode()}
