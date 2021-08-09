@@ -18,6 +18,7 @@ import (
 	"errors"
 	"html/template"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -50,7 +51,7 @@ func TestFetchTemplate(t *testing.T) {
 		{
 			"custom template file",
 			"",
-			"testdata/custom.tpl",
+			filepath.Join("testdata", "custom.tpl"),
 			spdxOff,
 			"Copyright {{.Year}} {{.Holder}}\n\nCustom License Template\n",
 			nil,
@@ -169,6 +170,12 @@ func TestExecuteTemplate(t *testing.T) {
 			licenseData{Holder: "H", Year: "Y", SPDXID: "S"},
 			"/*", " * ", "*/",
 			"/*\n * HYS\n*/\n\n",
+		},
+		{ // test multi-year
+			"Copyright {{.Year}} {{.Holder}}",
+			licenseData{Holder: "Acme", Year: "2015-2017,2019"},
+			"", "// ", "",
+			"// Copyright 2015-2017,2019 Acme\n\n",
 		},
 	}
 

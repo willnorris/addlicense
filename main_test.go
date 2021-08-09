@@ -19,18 +19,8 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"strings"
 	"testing"
 )
-
-func run(t *testing.T, name string, args ...string) {
-	cmd := exec.Command(name, args...)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("%s %s: %v\n%s", name, strings.Join(args, " "), err, out)
-	}
-}
 
 func tempDir(t *testing.T) string {
 	dir, err := ioutil.TempDir("", "addlicense")
@@ -47,8 +37,26 @@ func TestInitial(t *testing.T) {
 	}
 
 	tmp := tempDir(t)
-	t.Logf("tmp dir: %s", tmp)
-	run(t, "cp", "-r", "testdata/initial", tmp)
+	samplefile, cleanup := createTempFile(t, tmp, "*.c", "content")
+	defer cleanup()
+
+	wantContents := `/*
+ * Copyright 2018 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+content`
 
 	// run at least 2 times to ensure the program is idempotent
 	for i := 0; i < 2; i++ {
@@ -61,32 +69,14 @@ func TestInitial(t *testing.T) {
 			t.Fatalf("%v\n%s", err, out)
 		}
 
-		run(t, "diff", "-r", filepath.Join(tmp, "initial"), "testdata/expected")
+		got, err := ioutil.ReadFile(samplefile.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotContents := string(got); gotContents != wantContents {
+			t.Fatalf("file %q has contents %q, want %q", samplefile.Name(), gotContents, wantContents)
+		}
 	}
-}
-
-func TestMultiyear(t *testing.T) {
-	if os.Getenv("RUNME") != "" {
-		main()
-		return
-	}
-
-	tmp := tempDir(t)
-	t.Logf("tmp dir: %s", tmp)
-	samplefile := filepath.Join(tmp, "file.c")
-	const sampleLicensed = "testdata/multiyear_file.c"
-
-	run(t, "cp", "testdata/initial/file.c", samplefile)
-	cmd := exec.Command(os.Args[0],
-		"-test.run=TestMultiyear",
-		"-l", "bsd", "-c", "Google LLC",
-		"-y", "2015-2017,2019", samplefile,
-	)
-	cmd.Env = []string{"RUNME=1"}
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("%v\n%s", err, out)
-	}
-	run(t, "diff", samplefile, sampleLicensed)
 }
 
 func TestWriteErrors(t *testing.T) {
@@ -95,24 +85,21 @@ func TestWriteErrors(t *testing.T) {
 		return
 	}
 
-	tmp := tempDir(t)
-	t.Logf("tmp dir: %s", tmp)
-	samplefile := filepath.Join(tmp, "file.c")
+	samplefile, cleanup := createTempFile(t, "", "*.c", "content")
+	defer cleanup()
 
-	run(t, "cp", "testdata/initial/file.c", samplefile)
-	run(t, "chmod", "0444", samplefile)
+	os.Chmod(samplefile.Name(), 0444)
 	cmd := exec.Command(os.Args[0],
 		"-test.run=TestWriteErrors",
 		"-l", "apache", "-c", "Google LLC", "-y", "2018",
-		samplefile,
+		samplefile.Name(),
 	)
 	cmd.Env = []string{"RUNME=1"}
 	out, err := cmd.CombinedOutput()
 	if err == nil {
-		run(t, "chmod", "0644", samplefile)
+		os.Chmod(samplefile.Name(), 0644)
 		t.Fatalf("TestWriteErrors exited with a zero exit code.\n%s", out)
 	}
-	run(t, "chmod", "0644", samplefile)
 }
 
 func TestReadErrors(t *testing.T) {
@@ -121,24 +108,21 @@ func TestReadErrors(t *testing.T) {
 		return
 	}
 
-	tmp := tempDir(t)
-	t.Logf("tmp dir: %s", tmp)
-	samplefile := filepath.Join(tmp, "file.c")
+	samplefile, cleanup := createTempFile(t, "", "*.c", "content")
+	defer cleanup()
 
-	run(t, "cp", "testdata/initial/file.c", samplefile)
-	run(t, "chmod", "a-r", samplefile)
+	os.Chmod(samplefile.Name(), 0000)
 	cmd := exec.Command(os.Args[0],
 		"-test.run=TestReadErrors",
 		"-l", "apache", "-c", "Google LLC", "-y", "2018",
-		samplefile,
+		samplefile.Name(),
 	)
 	cmd.Env = []string{"RUNME=1"}
 	out, err := cmd.CombinedOutput()
 	if err == nil {
-		run(t, "chmod", "0644", samplefile)
+		os.Chmod(samplefile.Name(), 0644)
 		t.Fatalf("TestWriteErrors exited with a zero exit code.\n%s", out)
 	}
-	run(t, "chmod", "0644", samplefile)
 }
 
 func TestCheckSuccess(t *testing.T) {
@@ -147,15 +131,13 @@ func TestCheckSuccess(t *testing.T) {
 		return
 	}
 
-	tmp := tempDir(t)
-	t.Logf("tmp dir: %s", tmp)
-	samplefile := filepath.Join(tmp, "file.c")
+	samplefile, cleanup := createTempFile(t, "", "*.c", "// Copyright 2000\ncontent")
+	defer cleanup()
 
-	run(t, "cp", "testdata/expected/file.c", samplefile)
 	cmd := exec.Command(os.Args[0],
 		"-test.run=TestCheckSuccess",
 		"-l", "apache", "-c", "Google LLC", "-y", "2018",
-		"-check", samplefile,
+		"-check", samplefile.Name(),
 	)
 	cmd.Env = []string{"RUNME=1"}
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -169,56 +151,43 @@ func TestCheckFail(t *testing.T) {
 		return
 	}
 
-	tmp := tempDir(t)
-	t.Logf("tmp dir: %s", tmp)
-	samplefile := filepath.Join(tmp, "file.c")
+	samplefile, cleanup := createTempFile(t, "", "*.c", "content")
+	defer cleanup()
 
-	run(t, "cp", "testdata/initial/file.c", samplefile)
 	cmd := exec.Command(os.Args[0],
 		"-test.run=TestCheckFail",
 		"-l", "apache", "-c", "Google LLC", "-y", "2018",
-		"-check", samplefile,
+		"-check", samplefile.Name(),
 	)
 	cmd.Env = []string{"RUNME=1"}
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		t.Fatalf("TestCheckFail exited with a zero exit code.\n%s", out)
 	}
-}
-
-func TestMPL(t *testing.T) {
-	if os.Getenv("RUNME") != "" {
-		main()
-		return
-	}
-
-	tmp := tempDir(t)
-	t.Logf("tmp dir: %s", tmp)
-	samplefile := filepath.Join(tmp, "file.c")
-
-	run(t, "cp", "testdata/expected/file.c", samplefile)
-	cmd := exec.Command(os.Args[0],
-		"-test.run=TestMPL",
-		"-l", "mpl", "-c", "Google LLC", "-y", "2018",
-		"-check", samplefile,
-	)
-	cmd.Env = []string{"RUNME=1"}
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("%v\n%s", err, out)
+	if !t.Failed() {
+		os.Remove(samplefile.Name())
 	}
 }
 
-func createTempFile(contents string, pattern string) (*os.File, error) {
-	f, err := ioutil.TempFile("", pattern)
+func createTempFile(t *testing.T, dir, pattern, contents string) (*os.File, func()) {
+	f, err := ioutil.TempFile(dir, pattern)
+	cleanup := func() {
+		// remove temp file if all tests passed
+		if f != nil && !t.Failed() {
+			os.Remove(f.Name())
+		}
+	}
 	if err != nil {
-		return nil, err
+		t.Fatal(err)
+		return nil, cleanup
 	}
 
 	if err := ioutil.WriteFile(f.Name(), []byte(contents), 0644); err != nil {
-		return nil, err
+		t.Fatal(err)
+		return nil, cleanup
 	}
 
-	return f, nil
+	return f, cleanup
 }
 
 func TestAddLicense(t *testing.T) {
@@ -252,10 +221,8 @@ func TestAddLicense(t *testing.T) {
 
 	for _, tt := range tests {
 		// create temp file with contents
-		f, err := createTempFile(tt.contents, "*.go")
-		if err != nil {
-			t.Error(err)
-		}
+		f, cleanup := createTempFile(t, "", "*.go", tt.contents)
+		defer cleanup()
 		fi, err := f.Stat()
 		if err != nil {
 			t.Error(err)
@@ -277,11 +244,6 @@ func TestAddLicense(t *testing.T) {
 		}
 		if got := string(gotContents); got != tt.wantContents {
 			t.Errorf("addLicense with contents %q returned contents: %q, want %q", tt.contents, got, tt.wantContents)
-		}
-
-		// if all tests passed, cleanup temp file
-		if !t.Failed() {
-			_ = os.Remove(f.Name())
 		}
 	}
 }
