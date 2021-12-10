@@ -42,7 +42,7 @@ dockers:
       - "--platform=linux/arm64"
     goarch: arm64
 docker_manifests:
-  - name_template: '{{ .Env.REGISTRY }}/{{ .Env.IMAGE_NAME }}::{{ .Tag }}'
+  - name_template: '{{ .Env.REGISTRY }}/{{ .Env.IMAGE_NAME }}:{{ .Tag }}'
     image_templates:
       - '{{ .Env.REGISTRY }}/{{ .Env.IMAGE_NAME }}:{{ .Tag }}-amd64'
       - '{{ .Env.REGISTRY }}/{{ .Env.IMAGE_NAME }}:{{ .Tag }}-arm64'
