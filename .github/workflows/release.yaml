@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   # use goreleaser to cross-compile go binaries and add them to GitHub release
