@@ -15,7 +15,7 @@ jobs:
     env:
       DOCKER_CLI_EXPERIMENTAL: "enabled"
       REGISTYRY: "ghcr.io"
-      IMAGE_NAME: "google/addlicense"
+      IMAGE_NAME: ${{ github.repository }}
     steps:
       - name: Checkout
         uses: actions/checkout@v2
